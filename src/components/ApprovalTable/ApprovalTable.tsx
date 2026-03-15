@@ -13,13 +13,16 @@ type SortKey = 'token' | 'spender' | 'allowance' | 'risk'
 type SortDir = 'asc' | 'desc'
 
 const riskOrder = { critical: 0, high: 1, normal: 2, revoked: 3 }
+const ITEMS_PER_PAGE = 20
 
 export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('risk')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [hideRevoked, setHideRevoked] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const toggleSort = (key: SortKey) => {
+    setCurrentPage(1)
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     } else {
@@ -51,6 +54,13 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
     return sortDir === 'asc' ? cmp : -cmp
   })
 
+  // Pagination logic
+  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE)
+  const paginated = sorted.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  )
+
   const SortHeader = ({ label, colKey }: { label: string; colKey: SortKey }) => (
     <th
       onClick={() => toggleSort(colKey)}
@@ -68,12 +78,16 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-gray-400">
           {filtered.length} approval{filtered.length !== 1 ? 's' : ''}
+          {totalPages > 1 && ` (showing ${paginated.length})`}
         </p>
         <label className="flex items-center gap-2 text-sm text-gray-400">
           <input
             type="checkbox"
             checked={hideRevoked}
-            onChange={(e) => setHideRevoked(e.target.checked)}
+            onChange={(e) => {
+              setHideRevoked(e.target.checked)
+              setCurrentPage(1)
+            }}
             className="rounded border-gray-600"
           />
           Hide revoked
@@ -93,7 +107,7 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {sorted.map((approval, i) => (
+            {paginated.map((approval, i) => (
               <tr
                 key={`${approval.token.address}-${approval.spender}-${i}`}
                 className="transition-colors hover:bg-white/[0.02]"
@@ -142,6 +156,30 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5"
+          >
+            &larr; Previous
+          </button>
+          <p className="text-sm text-gray-400">
+            Page <span className="text-white font-medium">{currentPage}</span> of{' '}
+            <span className="text-white font-medium">{totalPages}</span>
+          </p>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5"
+          >
+            Next &rarr;
+          </button>
+        </div>
+      )}
     </div>
   )
 }
