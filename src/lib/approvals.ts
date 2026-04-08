@@ -160,24 +160,39 @@ async function fetchApprovalLogs(
   onProgress?.(`Found ${validLogs.length} approval events. Processing...`)
 
   const logs: ApprovalLog[] = []
+  const approvalTopic = '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
+
   for (const log of validLogs) {
     try {
-      const decoded = decodeEventLog({
-        abi: ERC20_ABI,
-        data: log.data as `0x${string}`,
-        topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-      })
+      if (log.topics[0] !== approvalTopic) continue
 
-      if (decoded.eventName === 'Approval') {
-        const args = decoded.args as { owner: Address; spender: Address; value: bigint }
-        logs.push({
-          address: log.address as Address,
-          owner: args.owner,
-          spender: args.spender,
-          value: args.value,
-          blockNumber: BigInt(log.blockNumber),
+      if (log.topics.length < 3) continue
+
+      const owner = '0x' + log.topics[1].slice(26) as Address
+      const spender = '0x' + log.topics[2].slice(26) as Address
+      let value: bigint
+
+      if (log.data && log.data !== '0x') {
+        const decoded = decodeEventLog({
+          abi: ERC20_ABI,
+          data: log.data as `0x${string}`,
+          topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
         })
+        const args = decoded.args as { owner: Address; spender: Address; value: bigint }
+        value = args.value
+      } else if (log.topics.length >= 4) {
+        value = BigInt(log.topics[3])
+      } else {
+        continue
       }
+
+      logs.push({
+        address: log.address as Address,
+        owner,
+        spender,
+        value,
+        blockNumber: BigInt(log.blockNumber),
+      })
     } catch {
       // Skip malformed logs
     }
