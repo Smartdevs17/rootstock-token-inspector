@@ -1,15 +1,13 @@
 import { useState, useCallback } from 'react'
 import type { Address } from 'viem'
 import { validateAddress } from '../../utils/address'
-import type { NetworkId } from '../../types'
 
 interface AddressInputProps {
   onSubmit: (address: Address) => void
   isLoading: boolean
-  networkId: NetworkId
 }
 
-export function AddressInput({ onSubmit, isLoading, networkId }: AddressInputProps) {
+export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
 
@@ -21,18 +19,15 @@ export function AddressInput({ onSubmit, isLoading, networkId }: AddressInputPro
         setError('Please enter an address')
         return
       }
-      const address = validateAddress(trimmed, networkId)
+      const address = validateAddress(trimmed)
       if (!address) {
-        setError(networkId === 30 
-          ? 'Invalid Rootstock Mainnet address (check checksum)'
-          : 'Invalid Rootstock Testnet address (check checksum)'
-        )
+        setError('Invalid address')
         return
       }
       setError('')
       onSubmit(address)
     },
-    [input, onSubmit, networkId],
+    [input, onSubmit],
   )
 
   return (

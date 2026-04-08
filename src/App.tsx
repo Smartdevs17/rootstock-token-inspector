@@ -68,7 +68,7 @@ function App() {
         {/* Controls */}
         <div className="flex flex-col items-center gap-4">
           <NetworkSelector value={networkId} onChange={handleNetworkChange} />
-          <AddressInput onSubmit={handleSubmit} isLoading={state.status === 'loading'} networkId={networkId} />
+          <AddressInput onSubmit={handleSubmit} isLoading={state.status === 'loading'} />
         </div>
 
         {/* Loading */}
