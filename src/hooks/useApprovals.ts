@@ -21,8 +21,8 @@ export function useApprovals(): UseApprovalsReturn {
 
     try {
       const client = getClient(networkId)
-      const approvals = await fetchApprovals(client, owner, networkId, setProgress)
-      setState({ status: 'success', data: approvals })
+      const { approvals, failedCount } = await fetchApprovals(client, owner, networkId, setProgress)
+      setState({ status: 'success', data: approvals, failedCount })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch approvals'
       setState({ status: 'error', error: message })

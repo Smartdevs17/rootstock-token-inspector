@@ -2,6 +2,7 @@ import type { Address, PublicClient } from 'viem'
 import { decodeEventLog } from 'viem'
 import type { NetworkId, ApprovalEntry } from '../types'
 import { ERC20_ABI } from '../constants/abis'
+import { RISK_ORDER } from '../constants/risk'
 import { getTokenMetadata } from './tokens'
 import { classifyRisk } from './risk'
 
@@ -30,6 +31,54 @@ interface BlockscoutLog {
   transactionHash: string
 }
 
+interface BlockscoutResponse {
+  status: string
+  message: string
+  result: BlockscoutLog[] | string
+}
+
+const MAX_API_RESULT_SIZE = 10000
+const MAX_RESPONSE_SIZE_BYTES = 50 * 1024 * 1024 // 50MB
+
+function isValidHexString(value: unknown, length?: number): value is string {
+  if (typeof value !== 'string') return false
+  if (!value.startsWith('0x')) return false
+  if (!/^0x[0-9a-fA-F]*$/.test(value)) return false
+  if (length !== undefined && value.length !== length) return false
+  return true
+}
+
+function isValidBlockscoutLog(log: unknown): log is BlockscoutLog {
+  if (typeof log !== 'object' || log === null) return false
+  const obj = log as Record<string, unknown>
+
+  if (!isValidHexString(obj.address, 42)) return false
+
+  if (!Array.isArray(obj.topics)) return false
+  if (obj.topics.length < 3) return false
+  for (const topic of obj.topics) {
+    if (!isValidHexString(topic)) return false
+  }
+
+  if (!isValidHexString(obj.data)) return false
+  if (!isValidHexString(obj.blockNumber)) return false
+  if (!isValidHexString(obj.transactionHash, 66)) return false
+
+  return true
+}
+
+function validateResponseSize(response: Response): boolean {
+  const contentLength = response.headers.get('content-length')
+  if (contentLength) {
+    const size = parseInt(contentLength, 10)
+    if (size > MAX_RESPONSE_SIZE_BYTES) {
+      console.error(`Blockscout response too large: ${size} bytes (max: ${MAX_RESPONSE_SIZE_BYTES})`)
+      return false
+    }
+  }
+  return true
+}
+
 interface ApprovalLog {
   address: Address
   owner: Address
@@ -46,7 +95,6 @@ async function fetchApprovalLogs(
   const base = getBlockscoutBase(networkId)
   const ownerTopic = '0x' + owner.slice(2).toLowerCase().padStart(64, '0')
 
-  // Blockscout getLogs API: topic0 = Approval event, topic1 = owner
   const params = new URLSearchParams({
     module: 'logs',
     action: 'getLogs',
@@ -64,18 +112,55 @@ async function fetchApprovalLogs(
     throw new Error(`Explorer API returned ${response.status}`)
   }
 
-  const json = await response.json() as { status: string; result: BlockscoutLog[] | string; message: string }
+  if (!validateResponseSize(response)) {
+    throw new Error('Explorer response too large. Please try a different address.')
+  }
 
-  if (json.status !== '1' || !Array.isArray(json.result)) {
-    // status "0" with "No records found" is not an error, just empty
+  let json: BlockscoutResponse
+  try {
+    json = await response.json() as BlockscoutResponse
+  } catch {
+    throw new Error('Invalid JSON response from explorer')
+  }
+
+  if (typeof json !== 'object' || json === null) {
+    throw new Error('Invalid response structure from explorer')
+  }
+
+  if (typeof json.status !== 'string' || typeof json.message !== 'string') {
+    throw new Error('Invalid response format from explorer')
+  }
+
+  if (json.status !== '1') {
     if (json.message === 'No records found') return []
     throw new Error(json.message || 'Failed to fetch logs from explorer')
   }
 
-  onProgress?.(`Found ${json.result.length} approval events. Processing...`)
+  if (!Array.isArray(json.result)) {
+    if (json.result === 'No records found') return []
+    throw new Error('Unexpected result format from explorer')
+  }
+
+  if (json.result.length > MAX_API_RESULT_SIZE) {
+    onProgress?.(`Warning: Results truncated at ${MAX_API_RESULT_SIZE} events. Some approvals may be missing.`)
+  }
+
+  const validLogs: BlockscoutLog[] = []
+  for (const log of json.result.slice(0, MAX_API_RESULT_SIZE)) {
+    if (isValidBlockscoutLog(log)) {
+      validLogs.push(log)
+    }
+  }
+
+  if (validLogs.length < json.result.length) {
+    const skipped = json.result.length - validLogs.length
+    onProgress?.(`Skipped ${skipped} invalid log entries.`)
+  }
+
+  onProgress?.(`Found ${validLogs.length} approval events. Processing...`)
 
   const logs: ApprovalLog[] = []
-  for (const log of json.result) {
+  for (const log of validLogs) {
     try {
       const decoded = decodeEventLog({
         abi: ERC20_ABI,
@@ -101,15 +186,19 @@ async function fetchApprovalLogs(
   return logs
 }
 
+export interface FetchApprovalsResult {
+  approvals: ApprovalEntry[]
+  failedCount: number
+}
+
 export async function fetchApprovals(
   client: PublicClient,
   owner: Address,
   networkId: NetworkId,
   onProgress?: (message: string) => void,
-): Promise<ApprovalEntry[]> {
+): Promise<FetchApprovalsResult> {
   const allLogs = await fetchApprovalLogs(networkId, owner, onProgress)
 
-  // Deduplicate: keep the latest approval per (token, spender) pair
   const latestApprovals = new Map<string, ApprovalLog>()
   for (const log of allLogs) {
     const key = `${log.address.toLowerCase()}:${log.spender.toLowerCase()}`
@@ -122,9 +211,9 @@ export async function fetchApprovals(
   const approvalList = Array.from(latestApprovals.values())
   onProgress?.(`Checking ${approvalList.length} current on-chain allowances...`)
 
-  // Batch allowance + metadata checks in parallel (groups of 5)
   const BATCH_SIZE = 5
   const entries: ApprovalEntry[] = []
+  let failedCount = 0
 
   for (let i = 0; i < approvalList.length; i += BATCH_SIZE) {
     const batch = approvalList.slice(i, i + BATCH_SIZE)
@@ -153,6 +242,8 @@ export async function fetchApprovals(
     for (const result of results) {
       if (result.status === 'fulfilled') {
         entries.push(result.value)
+      } else {
+        failedCount++
       }
     }
 
@@ -160,8 +251,10 @@ export async function fetchApprovals(
   }
 
   onProgress?.('Done')
-  return entries.sort((a, b) => {
-    const riskOrder = { critical: 0, high: 1, normal: 2, revoked: 3 }
-    return riskOrder[a.riskLevel] - riskOrder[b.riskLevel]
-  })
+  return {
+    approvals: entries.sort((a, b) => {
+      return RISK_ORDER[a.riskLevel] - RISK_ORDER[b.riskLevel]
+    }),
+    failedCount,
+  }
 }

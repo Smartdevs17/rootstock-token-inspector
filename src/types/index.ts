@@ -7,6 +7,7 @@ export interface TokenMetadata {
   name: string
   symbol: string
   decimals: number
+  decimalsUnknown?: boolean
 }
 
 export interface ApprovalEntry {
@@ -22,5 +23,5 @@ export type NetworkId = 30 | 31
 export type FetchState<T> =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'success'; data: T }
+  | { status: 'success'; data: T; failedCount?: number }
   | { status: 'error'; error: string }
