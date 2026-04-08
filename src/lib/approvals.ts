@@ -234,20 +234,43 @@ export async function fetchApprovals(
     const batch = approvalList.slice(i, i + BATCH_SIZE)
     const results = await Promise.allSettled(
       batch.map(async (log) => {
-        const [currentAllowance, token] = await Promise.all([
-          client.readContract({
+        // Fetch allowance and token metadata separately so one failure
+        // doesn't discard the entire entry
+        let currentAllowance: bigint
+        let allowanceFromLog = false
+        try {
+          currentAllowance = await client.readContract({
             address: log.address,
             abi: ERC20_ABI,
             functionName: 'allowance',
             args: [owner, log.spender],
-          }) as Promise<bigint>,
-          getTokenMetadata(client, log.address, networkId),
-        ])
+          }) as bigint
+        } catch {
+          // On-chain allowance() call failed (contract may be
+          // destroyed, non-standard, or RPC error). Fall back to
+          // the value from the most recent event log.
+          currentAllowance = log.value
+          allowanceFromLog = true
+        }
+
+        let token
+        try {
+          token = await getTokenMetadata(client, log.address, networkId)
+        } catch {
+          token = {
+            address: log.address,
+            name: `Unknown (${log.address.slice(0, 8)}...)`,
+            symbol: '???',
+            decimals: 18,
+            decimalsUnknown: true,
+          }
+        }
 
         return {
           token,
           spender: log.spender,
           allowance: currentAllowance,
+          allowanceFromLog,
           riskLevel: classifyRisk(currentAllowance),
           blockNumber: log.blockNumber,
         } satisfies ApprovalEntry

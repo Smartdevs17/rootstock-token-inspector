@@ -66,7 +66,7 @@ export function formatAllowance(value: bigint, decimals: number, decimalsUnknown
     const trimmedDec = decPart.replace(/0+$/, '')
     if (trimmedDec.length > 0) {
       const decFirst4 = trimmedDec.slice(0, 4)
-      if (parseInt(decFirst4, 10) > 0) {
+      if (Number(decFirst4) > 0) {
         const shortDec = decFirst4.replace(/0+$/, '') || '0'
         if (shortDec.length > 0 && shortDec !== '0') {
           return `${result}.${shortDec}`

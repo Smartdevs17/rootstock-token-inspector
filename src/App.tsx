@@ -100,7 +100,7 @@ function App() {
         {/* Results */}
         {state.status === 'success' && (
           <div className="flex w-full flex-col gap-6" role="region" aria-label="Approval results" aria-live="polite">
-            {state.failedCount && state.failedCount > 0 && (
+            {(state.failedCount ?? 0) > 0 && (
               <div 
                 className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4"
                 role="alert"
@@ -110,7 +110,7 @@ function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
                   <p className="text-sm text-yellow-300">
-                    {state.failedCount} token{state.failedCount > 1 ? 's' : ''} failed to load. The approval list may be incomplete.
+                    {state.failedCount} token{(state.failedCount ?? 0) > 1 ? 's' : ''} failed to load. The approval list may be incomplete.
                   </p>
                 </div>
                 <button
