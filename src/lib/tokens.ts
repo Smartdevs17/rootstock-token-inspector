@@ -3,10 +3,24 @@ import type { NetworkId, TokenMetadata } from '../types'
 import { KNOWN_TOKENS_MAINNET, KNOWN_TOKENS_TESTNET } from '../constants/tokens'
 import { ERC20_ABI } from '../constants/abis'
 
+const MAX_CACHE_SIZE = 100
 const metadataCache = new Map<string, TokenMetadata>()
+const cacheOrder: string[] = []
 
 function getKnownTokens(networkId: NetworkId): Record<Address, TokenMetadata> {
   return networkId === 30 ? KNOWN_TOKENS_MAINNET : KNOWN_TOKENS_TESTNET
+}
+
+function addToCache(key: string, value: TokenMetadata) {
+  if (metadataCache.has(key)) {
+    const idx = cacheOrder.indexOf(key)
+    if (idx !== -1) cacheOrder.splice(idx, 1)
+  } else if (metadataCache.size >= MAX_CACHE_SIZE) {
+    const oldest = cacheOrder.shift()
+    if (oldest) metadataCache.delete(oldest)
+  }
+  metadataCache.set(key, value)
+  cacheOrder.push(key)
 }
 
 export async function getTokenMetadata(
@@ -21,7 +35,7 @@ export async function getTokenMetadata(
   const knownTokens = getKnownTokens(networkId)
   const known = knownTokens[tokenAddress.toLowerCase() as Address]
   if (known) {
-    metadataCache.set(cacheKey, known)
+    addToCache(cacheKey, known)
     return known
   }
 
@@ -50,7 +64,7 @@ export async function getTokenMetadata(
       symbol,
       decimals,
     }
-    metadataCache.set(cacheKey, metadata)
+    addToCache(cacheKey, metadata)
     return metadata
   } catch {
     const fallback: TokenMetadata = {
@@ -58,8 +72,9 @@ export async function getTokenMetadata(
       name: `Unknown (${tokenAddress.slice(0, 8)}...)`,
       symbol: '???',
       decimals: 18,
+      decimalsUnknown: true,
     }
-    metadataCache.set(cacheKey, fallback)
+    addToCache(cacheKey, fallback)
     return fallback
   }
 }

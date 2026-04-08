@@ -1,13 +1,15 @@
 import { useState, useCallback } from 'react'
 import type { Address } from 'viem'
 import { validateAddress } from '../../utils/address'
+import type { NetworkId } from '../../types'
 
 interface AddressInputProps {
   onSubmit: (address: Address) => void
   isLoading: boolean
+  networkId: NetworkId
 }
 
-export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
+export function AddressInput({ onSubmit, isLoading, networkId }: AddressInputProps) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
 
@@ -19,22 +21,29 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
         setError('Please enter an address')
         return
       }
-      const address = validateAddress(trimmed)
+      const address = validateAddress(trimmed, networkId)
       if (!address) {
-        setError('Invalid Rootstock address')
+        setError(networkId === 30 
+          ? 'Invalid Rootstock Mainnet address (check checksum)'
+          : 'Invalid Rootstock Testnet address (check checksum)'
+        )
         return
       }
       setError('')
       onSubmit(address)
     },
-    [input, onSubmit],
+    [input, onSubmit, networkId],
   )
 
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-2xl">
       <div className="flex flex-col gap-2">
+        <label htmlFor="address-input" className="sr-only">
+          Rootstock wallet address
+        </label>
         <div className="flex gap-3">
           <input
+            id="address-input"
             type="text"
             value={input}
             onChange={(e) => {
@@ -44,6 +53,10 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
             placeholder="Enter wallet address (0x...)"
             disabled={isLoading}
             maxLength={42}
+            autoComplete="off"
+            spellCheck="false"
+            aria-describedby={error ? 'address-error' : undefined}
+            aria-invalid={error ? 'true' : undefined}
             className="flex-1 rounded-lg border border-white/10 bg-[#1a1a2e] px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors focus:border-[#FF9000]/50 focus:ring-1 focus:ring-[#FF9000]/50 disabled:opacity-50"
           />
           <button
@@ -55,7 +68,9 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
           </button>
         </div>
         {error && (
-          <p className="text-sm text-red-400">{error}</p>
+          <p id="address-error" className="text-sm text-red-400" role="alert">
+            {error}
+          </p>
         )}
       </div>
     </form>

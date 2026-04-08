@@ -3,17 +3,17 @@ import type { PublicClient } from 'viem'
 import { rootstock, rootstockTestnet } from './chains'
 import type { NetworkId } from '../types'
 
-const clients: Record<NetworkId, PublicClient> = {
-  30: createPublicClient({
-    chain: rootstock,
-    transport: http(),
-  }),
-  31: createPublicClient({
-    chain: rootstockTestnet,
-    transport: http(),
-  }),
-}
+const clientCache: Partial<Record<NetworkId, PublicClient>> = {}
 
 export function getClient(networkId: NetworkId): PublicClient {
-  return clients[networkId]
+  const cached = clientCache[networkId]
+  if (cached) return cached
+
+  const client = createPublicClient({
+    chain: networkId === 30 ? rootstock : rootstockTestnet,
+    transport: http(),
+  })
+
+  clientCache[networkId] = client
+  return client
 }

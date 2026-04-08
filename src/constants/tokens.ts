@@ -67,7 +67,7 @@ export const KNOWN_TOKENS_MAINNET: Record<Address, TokenMetadata> = {
 export const KNOWN_TOKENS_TESTNET: Record<Address, TokenMetadata> = {}
 
 /** The max uint256 value, used to detect unlimited approvals */
-export const MAX_UINT256 = 2n ** 256n - 1n
+export { maxUint256 as MAX_UINT256 } from 'viem'
 
 /** Threshold above which an approval is considered "high" risk (1 billion tokens with 18 decimals) */
 export const HIGH_RISK_THRESHOLD = 10n ** 27n
