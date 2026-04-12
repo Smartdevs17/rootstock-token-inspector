@@ -5,7 +5,6 @@ import { ERC20_ABI } from '../constants/abis'
 
 const MAX_CACHE_SIZE = 100
 const metadataCache = new Map<string, TokenMetadata>()
-const cacheOrder: string[] = []
 
 function getKnownTokens(networkId: NetworkId): Record<Address, TokenMetadata> {
   return networkId === 30 ? KNOWN_TOKENS_MAINNET : KNOWN_TOKENS_TESTNET
@@ -13,14 +12,17 @@ function getKnownTokens(networkId: NetworkId): Record<Address, TokenMetadata> {
 
 function addToCache(key: string, value: TokenMetadata) {
   if (metadataCache.has(key)) {
-    const idx = cacheOrder.indexOf(key)
-    if (idx !== -1) cacheOrder.splice(idx, 1)
+    metadataCache.delete(key)
   } else if (metadataCache.size >= MAX_CACHE_SIZE) {
-    const oldest = cacheOrder.shift()
+    const oldest = metadataCache.keys().next().value
     if (oldest) metadataCache.delete(oldest)
   }
+
   metadataCache.set(key, value)
-  cacheOrder.push(key)
+}
+
+export function clearTokenMetadataCache() {
+  metadataCache.clear()
 }
 
 export async function getTokenMetadata(

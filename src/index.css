@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+:where(button, [href], input, select, textarea, [role="button"], [role="radio"]):focus-visible {
+  outline: 2px solid #ff9000;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #0a0a0f;
+}

@@ -21,7 +21,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: { componentStack: string }) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo)
+    if (import.meta.env.DEV) {
+      console.error('ErrorBoundary caught an error:', error, errorInfo)
+    }
   }
 
   render() {
@@ -36,13 +38,13 @@ export class ErrorBoundary extends Component<Props, State> {
           </svg>
           <h2 className="text-xl font-semibold text-white">Something went wrong</h2>
           <p className="max-w-md text-center text-gray-400">
-            An unexpected error occurred. Please try refreshing the page or check the console for details.
+            An unexpected error occurred. Please try again.
           </p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => this.setState({ hasError: false, error: null })}
             className="rounded-lg bg-[#FF9000] px-6 py-3 font-medium text-white transition-colors hover:bg-[#FFa333]"
           >
-            Refresh Page
+            Try Again
           </button>
         </div>
       )

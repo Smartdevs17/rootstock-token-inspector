@@ -18,7 +18,7 @@ export function SummaryStats({ approvals }: SummaryStatsProps) {
   ]
 
   return (
-    <section aria-label="Approval summary statistics" className="grid grid-cols-2 gap-4 md:grid-cols-4" role="region">
+    <section aria-label="Approval summary statistics" className="grid grid-cols-2 gap-4 md:grid-cols-4">
       {stats.map((stat) => (
         <div
           key={stat.id}

@@ -15,7 +15,7 @@ export function SortHeader({ label, colKey, sortKey, sortDir, onSort }: SortHead
     : 'none'
 
   return (
-    <th aria-sort={sortDirection}>
+    <th aria-sort={sortDirection} scope="col">
       <button
         type="button"
         onClick={() => onSort(colKey)}

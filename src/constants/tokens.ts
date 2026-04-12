@@ -44,8 +44,8 @@ export const KNOWN_TOKENS_MAINNET: Record<Address, TokenMetadata> = {
     symbol: 'FISH',
     decimals: 18,
   },
-  '0xdB107FA69E33f05180a4C2cE9c2E7CB481645C2d': {
-    address: '0xdB107FA69E33f05180a4C2cE9c2E7CB481645C2d',
+  '0xdb107fa69e33f05180a4c2ce9c2e7cb481645c2d': {
+    address: '0xdb107fa69e33f05180a4c2ce9c2e7cb481645c2d',
     name: 'ZUSD',
     symbol: 'ZUSD',
     decimals: 18,

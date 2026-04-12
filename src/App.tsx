@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Address } from 'viem'
 import type { NetworkId } from './types'
 import { Layout } from './components/Layout/Layout'
@@ -12,10 +12,10 @@ import { rootstock, rootstockTestnet } from './lib/chains'
 function App() {
   const [networkId, setNetworkId] = useState<NetworkId>(30)
   const [inspectedAddress, setInspectedAddress] = useState<Address | null>(null)
-  const { state, progress, fetch, reset } = useApprovals()
+  const { state, progress, fetchApprovals, reset } = useApprovals()
 
   const chain = networkId === 30 ? rootstock : rootstockTestnet
-  const explorerUrl = (() => {
+  const explorerUrl = useMemo(() => {
     const url = chain.blockExplorers.default.url
     try {
       const parsed = new URL(url)
@@ -26,14 +26,14 @@ function App() {
     } catch {
       return 'https://explorer.rsk.co'
     }
-  })()
+  }, [chain.blockExplorers.default.url])
 
   const handleSubmit = useCallback(
     (address: Address) => {
       setInspectedAddress(address)
-      fetch(address, networkId)
+      fetchApprovals(address, networkId)
     },
-    [fetch, networkId],
+    [fetchApprovals, networkId],
   )
 
   const handleNetworkChange = useCallback(
@@ -47,9 +47,9 @@ function App() {
 
   const handleRetry = useCallback(() => {
     if (inspectedAddress) {
-      fetch(inspectedAddress, networkId)
+      fetchApprovals(inspectedAddress, networkId)
     }
-  }, [inspectedAddress, fetch, networkId])
+  }, [inspectedAddress, fetchApprovals, networkId])
 
   return (
     <Layout>
@@ -99,7 +99,7 @@ function App() {
 
         {/* Results */}
         {state.status === 'success' && (
-          <div className="flex w-full flex-col gap-6" role="region" aria-label="Approval results" aria-live="polite">
+          <div className="flex w-full flex-col gap-6" aria-label="Approval results" aria-live="polite">
             {(state.failedCount ?? 0) > 0 && (
               <div 
                 className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4"

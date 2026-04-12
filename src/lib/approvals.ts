@@ -1,5 +1,5 @@
 import type { Address, PublicClient } from 'viem'
-import { decodeEventLog } from 'viem'
+import { decodeEventLog, isAddress } from 'viem'
 import type { NetworkId, ApprovalEntry } from '../types'
 import { ERC20_ABI } from '../constants/abis'
 import { RISK_ORDER } from '../constants/risk'
@@ -17,8 +17,7 @@ const BLOCKSCOUT_URLS: Record<NetworkId, string> = {
 }
 
 function getBlockscoutBase(networkId: NetworkId): string {
-  const isDev = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  return isDev ? BLOCKSCOUT_API[networkId] : BLOCKSCOUT_URLS[networkId]
+  return import.meta.env.DEV ? BLOCKSCOUT_API[networkId] : BLOCKSCOUT_URLS[networkId]
 }
 
 const APPROVAL_TOPIC = '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
@@ -72,11 +71,97 @@ function validateResponseSize(response: Response): boolean {
   if (contentLength) {
     const size = parseInt(contentLength, 10)
     if (size > MAX_RESPONSE_SIZE_BYTES) {
-      console.error(`Blockscout response too large: ${size} bytes (max: ${MAX_RESPONSE_SIZE_BYTES})`)
       return false
     }
   }
   return true
+}
+
+async function readResponseJson<T>(response: Response): Promise<T> {
+  if (!response.body) {
+    return response.json() as Promise<T>
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  let totalBytes = 0
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+
+    totalBytes += value.byteLength
+    if (totalBytes > MAX_RESPONSE_SIZE_BYTES) {
+      await reader.cancel('Response exceeded maximum size')
+      throw new Error('Explorer response too large. Please try a different address.')
+    }
+
+    chunks.push(decoder.decode(value, { stream: true }))
+  }
+
+  chunks.push(decoder.decode())
+
+  try {
+    return JSON.parse(chunks.join('')) as T
+  } catch {
+    throw new Error('Invalid JSON response from explorer')
+  }
+}
+
+export function parseApprovalLogs(validLogs: BlockscoutLog[]): ApprovalLog[] {
+  const logs: ApprovalLog[] = []
+
+  for (const log of validLogs) {
+    try {
+      if (log.topics[0] !== APPROVAL_TOPIC || log.topics.length < 3) continue
+
+      const owner = `0x${log.topics[1].slice(26)}`
+      const spender = `0x${log.topics[2].slice(26)}`
+      if (!isAddress(owner) || !isAddress(spender) || !isAddress(log.address)) continue
+
+      let value: bigint
+      if (log.data && log.data !== '0x') {
+        const decoded = decodeEventLog({
+          abi: ERC20_ABI,
+          data: log.data as `0x${string}`,
+          topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+        })
+        const args = decoded.args as { value: bigint }
+        value = args.value
+      } else if (log.topics.length >= 4) {
+        value = BigInt(log.topics[3])
+      } else {
+        continue
+      }
+
+      logs.push({
+        address: log.address,
+        owner,
+        spender,
+        value,
+        blockNumber: BigInt(log.blockNumber),
+      })
+    } catch {
+      // Skip malformed logs
+    }
+  }
+
+  return logs
+}
+
+export function getLatestApprovalLogs(logs: ApprovalLog[]): ApprovalLog[] {
+  const latestApprovals = new Map<string, ApprovalLog>()
+
+  for (const log of logs) {
+    const key = `${log.address.toLowerCase()}:${log.spender.toLowerCase()}`
+    const existing = latestApprovals.get(key)
+    if (!existing || log.blockNumber > existing.blockNumber) {
+      latestApprovals.set(key, log)
+    }
+  }
+
+  return Array.from(latestApprovals.values())
 }
 
 interface ApprovalLog {
@@ -91,6 +176,7 @@ async function fetchApprovalLogs(
   networkId: NetworkId,
   owner: Address,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<ApprovalLog[]> {
   const base = getBlockscoutBase(networkId)
   const ownerTopic = '0x' + owner.slice(2).toLowerCase().padStart(64, '0')
@@ -106,22 +192,17 @@ async function fetchApprovalLogs(
   })
 
   onProgress?.('Fetching approval events from explorer...')
-  const response = await fetch(`${base}?${params}`)
+  const response = await fetch(`${base}?${params}`, { signal })
 
   if (!response.ok) {
-    throw new Error(`Explorer API returned ${response.status}`)
+    throw new Error('Explorer request failed. Please try again.')
   }
 
   if (!validateResponseSize(response)) {
     throw new Error('Explorer response too large. Please try a different address.')
   }
 
-  let json: BlockscoutResponse
-  try {
-    json = await response.json() as BlockscoutResponse
-  } catch {
-    throw new Error('Invalid JSON response from explorer')
-  }
+  const json = await readResponseJson<BlockscoutResponse>(response)
 
   if (typeof json !== 'object' || json === null) {
     throw new Error('Invalid response structure from explorer')
@@ -133,7 +214,7 @@ async function fetchApprovalLogs(
 
   if (json.status !== '1') {
     if (json.message === 'No records found') return []
-    throw new Error(json.message || 'Failed to fetch logs from explorer')
+    throw new Error('Explorer request failed. Please try again.')
   }
 
   if (!Array.isArray(json.result)) {
@@ -159,46 +240,7 @@ async function fetchApprovalLogs(
 
   onProgress?.(`Found ${validLogs.length} approval events. Processing...`)
 
-  const logs: ApprovalLog[] = []
-  const approvalTopic = '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
-
-  for (const log of validLogs) {
-    try {
-      if (log.topics[0] !== approvalTopic) continue
-
-      if (log.topics.length < 3) continue
-
-      const owner = '0x' + log.topics[1].slice(26) as Address
-      const spender = '0x' + log.topics[2].slice(26) as Address
-      let value: bigint
-
-      if (log.data && log.data !== '0x') {
-        const decoded = decodeEventLog({
-          abi: ERC20_ABI,
-          data: log.data as `0x${string}`,
-          topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-        })
-        const args = decoded.args as { owner: Address; spender: Address; value: bigint }
-        value = args.value
-      } else if (log.topics.length >= 4) {
-        value = BigInt(log.topics[3])
-      } else {
-        continue
-      }
-
-      logs.push({
-        address: log.address as Address,
-        owner,
-        spender,
-        value,
-        blockNumber: BigInt(log.blockNumber),
-      })
-    } catch {
-      // Skip malformed logs
-    }
-  }
-
-  return logs
+  return parseApprovalLogs(validLogs)
 }
 
 export interface FetchApprovalsResult {
@@ -211,19 +253,10 @@ export async function fetchApprovals(
   owner: Address,
   networkId: NetworkId,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<FetchApprovalsResult> {
-  const allLogs = await fetchApprovalLogs(networkId, owner, onProgress)
-
-  const latestApprovals = new Map<string, ApprovalLog>()
-  for (const log of allLogs) {
-    const key = `${log.address.toLowerCase()}:${log.spender.toLowerCase()}`
-    const existing = latestApprovals.get(key)
-    if (!existing || log.blockNumber > existing.blockNumber) {
-      latestApprovals.set(key, log)
-    }
-  }
-
-  const approvalList = Array.from(latestApprovals.values())
+  const allLogs = await fetchApprovalLogs(networkId, owner, onProgress, signal)
+  const approvalList = getLatestApprovalLogs(allLogs)
   onProgress?.(`Checking ${approvalList.length} current on-chain allowances...`)
 
   const BATCH_SIZE = 5

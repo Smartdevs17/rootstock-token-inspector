@@ -12,6 +12,8 @@ export function RevokeButton({ tokenAddress, spender, disabled }: RevokeButtonPr
   const [showCalldata, setShowCalldata] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const copyButtonRef = useRef<HTMLButtonElement>(null)
 
   const tx = useMemo(() => buildRevokeTransaction(tokenAddress, spender), [tokenAddress, spender])
 
@@ -22,17 +24,34 @@ export function RevokeButton({ tokenAddress, spender, disabled }: RevokeButtonPr
   useEffect(() => {
     if (!showCalldata) return
 
+    closeButtonRef.current?.focus()
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         closePopover()
         buttonRef.current?.focus()
+        return
+      }
+
+      if (e.key === 'Tab' && popoverRef.current) {
+        const focusable = [closeButtonRef.current, copyButtonRef.current].filter(Boolean) as HTMLButtonElement[]
+        if (focusable.length === 0) return
+
+        const currentIndex = focusable.indexOf(document.activeElement as HTMLButtonElement)
+        const nextIndex = e.shiftKey
+          ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+          : (currentIndex === -1 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1)
+
+        e.preventDefault()
+        focusable[nextIndex]?.focus()
       }
     }
 
     const handleClickOutside = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         closePopover()
+        buttonRef.current?.focus()
       }
     }
 
@@ -84,13 +103,29 @@ export function RevokeButton({ tokenAddress, spender, disabled }: RevokeButtonPr
       </button>
       {showCalldata && (
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label="Revoke transaction calldata"
+          aria-modal="true"
           className="absolute right-0 top-full z-10 mt-2 w-80 rounded-lg border border-white/10 bg-[#12121a] p-4 shadow-xl"
         >
-          <p className="mb-2 text-xs font-medium text-gray-400">
-            Revoke Transaction Calldata
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-gray-400">
+              Revoke Transaction Calldata
+            </p>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={() => {
+                closePopover()
+                buttonRef.current?.focus()
+              }}
+              aria-label="Close revoke dialog"
+              className="rounded-md px-2 py-1 text-xs text-gray-300 transition-colors hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
           <div className="mb-3 space-y-2">
             <div>
               <span className="text-xs text-gray-500">To:</span>
@@ -102,6 +137,7 @@ export function RevokeButton({ tokenAddress, spender, disabled }: RevokeButtonPr
             </div>
           </div>
           <button
+            ref={copyButtonRef}
             onClick={handleCopyToClipboard}
             className="w-full rounded-md bg-white/5 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10"
           >

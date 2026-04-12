@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { ApprovalEntry } from '../../types'
 import { RiskBadge } from '../RiskBadge/RiskBadge'
 import { RevokeButton } from '../RevokeButton/RevokeButton'
@@ -22,7 +22,7 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
   const [hideRevoked, setHideRevoked] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
-  const toggleSort = (key: SortKey) => {
+  const toggleSort = useCallback((key: SortKey) => {
     setCurrentPage(1)
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -30,13 +30,16 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
       setSortKey(key)
       setSortDir('asc')
     }
-  }
+  }, [sortDir, sortKey])
 
-  const filtered = hideRevoked
-    ? approvals.filter((a) => a.riskLevel !== 'revoked')
-    : approvals
+  const filtered = useMemo(
+    () => hideRevoked
+      ? approvals.filter((a) => a.riskLevel !== 'revoked')
+      : approvals,
+    [approvals, hideRevoked],
+  )
 
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     let cmp = 0
     switch (sortKey) {
       case 'token':
@@ -53,12 +56,12 @@ export function ApprovalTable({ approvals, explorerUrl }: ApprovalTableProps) {
         break
     }
     return sortDir === 'asc' ? cmp : -cmp
-  })
+  }), [filtered, sortDir, sortKey])
 
   const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE)
-  const paginated = sorted.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
+  const paginated = useMemo(
+    () => sorted.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [currentPage, sorted],
   )
 
   return (

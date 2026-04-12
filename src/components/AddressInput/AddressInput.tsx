@@ -52,7 +52,7 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
             spellCheck="false"
             aria-describedby={error ? 'address-error' : undefined}
             aria-invalid={error ? 'true' : undefined}
-            className="flex-1 rounded-lg border border-white/10 bg-[#1a1a2e] px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors focus:border-[#FF9000]/50 focus:ring-1 focus:ring-[#FF9000]/50 disabled:opacity-50"
+            className="flex-1 rounded-lg border border-white/10 bg-[#1a1a2e] px-4 py-3 text-white placeholder-gray-500 transition-colors focus:border-[#FF9000] disabled:opacity-50"
           />
           <button
             type="submit"
